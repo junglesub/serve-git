@@ -1,0 +1,29 @@
+{
+  "name": "serve-git",
+  "version": "0.1.0",
+  "description": "Serve the current Git repository through a temporary read-only HTTPS tunnel.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "git",
+    "tunnel",
+    "cloudflare",
+    "temporary",
+    "cli"
+  ],
+  "license": "MIT",
+  "bin": {
+    "serve-git": "bin/serve-git.mjs"
+  }
+}

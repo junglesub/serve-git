@@ -1,0 +1,9 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "serve-git",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}
