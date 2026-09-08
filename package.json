@@ -1,6 +1,6 @@
 {
   "name": "serve-git",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Serve the current Git repository through a temporary read-only HTTPS tunnel.",
   "type": "module",
   "engines": {
