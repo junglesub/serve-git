@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/junglesub/serve-git/compare/serve-git-v0.3.0...serve-git-v0.3.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* configure npm repository metadata for oidc publish ([0d10ae9](https://github.com/junglesub/serve-git/commit/0d10ae9660c67f10fc150941c3cd65ae05ca77d3))
+
 ## [0.3.0](https://github.com/junglesub/serve-git/compare/serve-git-v0.2.0...serve-git-v0.3.0) (2026-09-08)
 
 
