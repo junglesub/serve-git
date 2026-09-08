@@ -63,6 +63,7 @@ import {
   discoverRepository,
   createBareSnapshot,
   startStaticServer,
+  startSnapshotWatcher,
 } from '../src/core.mjs';
 
 const execFile = promisify(execFileCb);
@@ -300,4 +301,57 @@ test('bare snapshot exposes the selected branch commit as a loose object for dum
   const bare = await createBareSnapshot(source, 'main', tempRoot);
   const loosePath = path.join(bare, 'objects', commit.slice(0, 2), commit.slice(2));
   await access(loosePath);
+});
+
+
+test('snapshot watcher updates the same HTTP endpoint after a new source commit', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'serve-git-watch-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const source = path.join(root, 'source');
+  const tempRoot = path.join(root, 'temp');
+  await mkdir(source, { recursive: true });
+  await mkdir(tempRoot, { recursive: true });
+  await git(source, ['init', '-b', 'main']);
+  await git(source, ['config', 'user.email', 'test@example.com']);
+  await git(source, ['config', 'user.name', 'Test User']);
+  await writeFile(path.join(source, 'hello.txt'), 'one\n');
+  await git(source, ['add', 'hello.txt']);
+  await git(source, ['commit', '-m', 'initial']);
+  const { stdout: firstOut } = await git(source, ['rev-parse', 'HEAD']);
+  const firstCommit = firstOut.trim();
+
+  const bare = await createBareSnapshot(source, 'main', tempRoot);
+  const server = await startStaticServer(bare);
+  t.after(() => server.close());
+  const watcher = startSnapshotWatcher({
+    repoRoot: source,
+    branch: 'main',
+    tempRoot,
+    server,
+    currentCommit: firstCommit,
+    intervalMs: 25,
+  });
+  t.after(() => watcher.close());
+
+  const before = await fetch(`${server.url}${server.gitPath}/info/refs`).then((r) => r.text());
+  assert.match(before, new RegExp(firstCommit));
+
+  await writeFile(path.join(source, 'hello.txt'), 'two\n');
+  await git(source, ['add', 'hello.txt']);
+  await git(source, ['commit', '-m', 'second']);
+  const { stdout: secondOut } = await git(source, ['rev-parse', 'HEAD']);
+  const secondCommit = secondOut.trim();
+
+  let refs = '';
+  for (let i = 0; i < 80; i += 1) {
+    refs = await fetch(`${server.url}${server.gitPath}/info/refs`).then((r) => r.text());
+    if (refs.includes(secondCommit)) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.match(refs, new RegExp(secondCommit));
+
+  const objectResponse = await fetch(
+    `${server.url}${server.gitPath}/objects/${secondCommit.slice(0, 2)}/${secondCommit.slice(2)}`,
+  );
+  assert.equal(objectResponse.status, 200);
 });

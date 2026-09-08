@@ -6,7 +6,7 @@ Temporarily serve your current Git repository as a **read-only HTTPS remote** wi
 npx serve-git
 ```
 
-`serve-git` creates a disposable bare snapshot of your current branch, exposes it through a Cloudflare Quick Tunnel, prints a cloneable HTTPS URL, and removes its temporary resources when you stop it.
+`serve-git` creates a disposable bare snapshot of your current branch, exposes it through a Cloudflare Quick Tunnel, keeps that snapshot updated when new commits land on the branch, and removes its temporary resources when you stop it.
 
 It is useful when you need to move local commits from a remote machine without installing your personal SSH key or storing GitHub credentials on that machine.
 
@@ -50,6 +50,8 @@ git fetch temp
 ```
 
 When the transfer is complete, press `Ctrl-C` on the machine running `serve-git`.
+
+While `serve-git` is running, new commits on the selected branch are detected automatically. The public URL stays the same, so clients only need to run `git fetch` again to receive the new commit. The watcher checks for branch changes every two seconds.
 
 ## Common commands
 
@@ -166,7 +168,7 @@ Clone the repository and run:
 
 ```bash
 npm test
-npm publish --dry-run
+npm pack --dry-run
 ```
 
 The test suite covers localhost Git cloning, signal cleanup, startup interruption, stale-session cleanup, PID safety checks, and recovery after the parent process is forcibly killed.

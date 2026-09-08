@@ -277,6 +277,7 @@ export async function createBareSnapshot(repoRoot, branch, tempRoot, signal = un
 export async function startStaticServer(repoDir, publicName = 'repo') {
   const safeName = publicName.replace(/[^A-Za-z0-9._-]/g, '-') || 'repo';
   const gitPath = `/${safeName}.git`;
+  let currentRepoDir = repoDir;
   const server = http.createServer(async (req, res) => {
     try {
       if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -292,7 +293,7 @@ export async function startStaticServer(repoDir, publicName = 'repo') {
         return;
       }
       const relativeUrl = pathname.slice(gitPath.length) || '/';
-      const filePath = safeRepoPath(repoDir, relativeUrl);
+      const filePath = safeRepoPath(currentRepoDir, relativeUrl);
       if (!filePath) {
         res.writeHead(400);
         res.end();
@@ -342,7 +343,90 @@ export async function startStaticServer(repoDir, publicName = 'repo') {
   return {
     url: `http://127.0.0.1:${address.port}`,
     gitPath,
+    setRepoDir: (nextRepoDir) => { currentRepoDir = nextRepoDir; },
+    getRepoDir: () => currentRepoDir,
     close: () => new Promise((resolve) => server.close(() => resolve())),
+  };
+}
+
+export function startSnapshotWatcher({
+  repoRoot,
+  branch,
+  tempRoot,
+  server,
+  currentCommit,
+  intervalMs = 2_000,
+  signal = undefined,
+  onUpdate = null,
+  onError = null,
+}) {
+  let stopped = false;
+  let timer = null;
+  let refreshPromise = null;
+  let commit = currentCommit;
+  let activeBare = server.getRepoDir();
+
+  const schedule = () => {
+    if (stopped || signal?.aborted) return;
+    timer = setTimeout(run, intervalMs);
+    timer.unref?.();
+  };
+
+  const run = async () => {
+    if (stopped || signal?.aborted) return;
+    refreshPromise = (async () => {
+      let stagingRoot = null;
+      try {
+        const { stdout } = await runGit(['rev-parse', '--verify', `${branch}^{commit}`], { cwd: repoRoot, signal });
+        const nextCommit = stdout.trim();
+        if (nextCommit === commit) return;
+
+        stagingRoot = await mkdtemp(path.join(tempRoot, 'snapshot-'));
+        const nextBare = await createBareSnapshot(repoRoot, branch, stagingRoot, signal);
+        const { stdout: snapshotCommitOut } = await runGit(
+          ['--git-dir', nextBare, 'rev-parse', '--verify', `${branch}^{commit}`],
+          { signal },
+        );
+        if (snapshotCommitOut.trim() !== nextCommit) {
+          throw new Error('Source branch changed while rebuilding snapshot');
+        }
+
+        const previousBare = activeBare;
+        activeBare = nextBare;
+        commit = nextCommit;
+        server.setRepoDir(nextBare);
+        if (previousBare.startsWith(`${tempRoot}${path.sep}`)) {
+          const previousParent = path.dirname(previousBare);
+          if (previousParent === tempRoot) await rm(previousBare, { recursive: true, force: true });
+          else await rm(previousParent, { recursive: true, force: true });
+        }
+        stagingRoot = null;
+        await onUpdate?.(nextCommit);
+      } catch (error) {
+        if (stagingRoot) await rm(stagingRoot, { recursive: true, force: true }).catch(() => {});
+        if (!stopped && !signal?.aborted) await onError?.(error);
+      } finally {
+        refreshPromise = null;
+        schedule();
+      }
+    })();
+    await refreshPromise;
+  };
+
+  const abort = () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
+  signal?.addEventListener('abort', abort, { once: true });
+  schedule();
+
+  return {
+    get commit() { return commit; },
+    close: async () => {
+      abort();
+      await refreshPromise?.catch(() => {});
+      signal?.removeEventListener('abort', abort);
+    },
   };
 }
 
@@ -502,11 +586,13 @@ export async function createTemporaryGitTunnel({
   await writeSessionManifest(tempDirectory, session);
   let server = null;
   let tunnel = null;
+  let watcher = null;
   let closed = false;
 
   const close = async () => {
     if (closed) return;
     closed = true;
+    await watcher?.close().catch(() => {});
     await tunnel?.close().catch(() => {});
     await server?.close().catch(() => {});
     await rm(tempDirectory, { recursive: true, force: true });
@@ -527,6 +613,14 @@ export async function createTemporaryGitTunnel({
         session.cloudflaredPid = child.pid ?? null;
         await writeSessionManifest(tempDirectory, session);
       },
+    });
+    watcher = startSnapshotWatcher({
+      repoRoot: metadata.root,
+      branch: metadata.branch,
+      tempRoot: tempDirectory,
+      server,
+      currentCommit: metadata.commit,
+      signal,
     });
     return {
       ...metadata,
