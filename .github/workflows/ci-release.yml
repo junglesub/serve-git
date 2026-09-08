@@ -76,6 +76,21 @@ jobs:
         if: steps.release.outputs.release_created == 'true'
         run: npm test
 
+      - name: Set npm repository metadata
+        if: steps.release.outputs.release_created == 'true'
+        run: |
+          npm pkg set repository.type=git
+          npm pkg set "repository.url=git+https://github.com/${GITHUB_REPOSITORY}.git"
+          npm pkg get repository
+
+      - name: Show npm publish environment
+        if: steps.release.outputs.release_created == 'true'
+        run: |
+          node --version
+          npm --version
+          echo "repository=${GITHUB_REPOSITORY}"
+          echo "workflow=${GITHUB_WORKFLOW_REF}"
+
       - name: Publish to npm with OIDC
         if: steps.release.outputs.release_created == 'true'
         run: npm publish

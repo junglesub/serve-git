@@ -202,15 +202,16 @@ The publish job uses npm Trusted Publishing with GitHub Actions OIDC, so no long
 Trusted Publishing can only be configured after the npm package already exists. For the initial bootstrap:
 
 1. Create the GitHub repository and push this project.
-2. Add a `repository` field to `package.json` whose URL exactly matches that GitHub repository.
-3. Publish the initial version once with your normal npm account credentials:
+2. Publish the initial version once with your normal npm account credentials:
 
    ```bash
    npm publish
    ```
 
-4. In npm package settings for `serve-git`, add a GitHub Actions trusted publisher for the GitHub repository and set the workflow filename to `ci-release.yml`.
-5. Allow the trusted publisher to perform `npm publish`.
+3. In npm package settings for `serve-git`, add a GitHub Actions trusted publisher for the GitHub repository and set the workflow filename to `ci-release.yml`.
+4. Explicitly allow the trusted publisher to perform `npm publish`.
+
+The release workflow derives the exact repository URL from GitHub's `GITHUB_REPOSITORY` value and injects it into the package metadata immediately before publishing. This avoids hard-coding an owner or repository name while satisfying npm's repository matching requirement.
 
 After that bootstrap, releases are automatic. Merge normal Conventional Commit changes into `main`, then merge the release-please PR when you are ready to publish the proposed version.
 
